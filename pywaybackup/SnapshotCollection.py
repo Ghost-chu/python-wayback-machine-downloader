@@ -56,28 +56,7 @@ class SnapshotCollection:
     
 
     @classmethod
-    def create_output(cls, request_timestamp: str, request_url: str, output_dir: str):
-        """
-        Create the output path for a snapshot entry of the collection according to the mode.
-
-        Input:
-        - request_timestamp: The timestamp of the requested snapshot (str).
-        - request_url: The requested original URL (not the archive URL) (str).
-        - output_dir: The output directory (str).
-
-        Output:
-        - download_file: The output path for the snapshot entry (str) with filename.
-        """
-        domain, subdir, filename = url_split(request_url, index=True)
-        if cls.MODE_CURRENT:
-            download_dir = os.path.join(output_dir, domain, subdir)
-        else:
-            download_dir = os.path.join(output_dir, domain, request_timestamp, subdir)
-        download_file = os.path.abspath(os.path.join(download_dir, filename))
-        return download_file
-    
-    @classmethod
-    def create_output2(cls, url: str, timestamp: str, output: str):
+    def create_output(cls, url: str, timestamp: str, output: str):
         domain, subdir, filename = url_split(url.split("id_/")[1], index=True)
         if cls.MODE_CURRENT:
             download_dir = os.path.join(output, domain, subdir)
