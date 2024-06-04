@@ -39,12 +39,13 @@ class SnapshotCollection:
     def create_collection(cls):
         new_collection = []
         for idx, cdx_entry in enumerate(cls.SNAPSHOT_COLLECTION):
-            timestamp, url = cdx_entry["timestamp"], cdx_entry["url"]
+            timestamp, url_origin = cdx_entry["timestamp"], cdx_entry["url"]
+            url_archive = f"https://web.archive.org/web/{timestamp}id_/{url_origin}"
             collection_entry = {
                 "id": idx,
                 "timestamp": timestamp,
-                "url_archive": False,
-                "url_origin": url,
+                "url_archive": url_archive,
+                "url_origin": url_origin,
                 "redirect_url": False,
                 "redirect_timestamp": False,
                 "response": False,
@@ -72,6 +73,16 @@ class SnapshotCollection:
             download_dir = os.path.join(output_dir, domain, subdir)
         else:
             download_dir = os.path.join(output_dir, domain, request_timestamp, subdir)
+        download_file = os.path.abspath(os.path.join(download_dir, filename))
+        return download_file
+    
+    @classmethod
+    def create_output2(cls, url: str, timestamp: str, output: str):
+        domain, subdir, filename = url_split(url.split("id_/")[1], index=True)
+        if cls.MODE_CURRENT:
+            download_dir = os.path.join(output, domain, subdir)
+        else:
+            download_dir = os.path.join(output, domain, timestamp, subdir)
         download_file = os.path.abspath(os.path.join(download_dir, filename))
         return download_file
 

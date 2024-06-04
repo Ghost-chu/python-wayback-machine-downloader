@@ -168,7 +168,7 @@ def download_loop(snapshot_batch, output, worker, retry, no_redirect, attempt=1,
         return
     for snapshot in snapshot_batch:
         status = f"\n-----> Attempt: [{attempt}/{max_attempt}] Snapshot [{snapshot_batch.index(snapshot)+1}/{len(snapshot_batch)}] - Worker: {worker}"
-        download_status = download(output, snapshot, connection, status, no_redirect)
+        download_status = download2(output, snapshot, connection, status, no_redirect)
         if not download_status:
             failed_urls.append(snapshot)
         if download_status:
@@ -219,7 +219,8 @@ def download(output, snapshot_entry, connection, status_message, no_redirect=Fal
                         response_status_message = parse_response_code(response_status)
                         location = response.getheader("Location")
                         if location:
-                            request_url = location
+                            v.write(f"splitting location: {location}")
+                            request_url = location.split("web.archive.org/web/")[1].split("id_/")[1]
                             request_timestamp = url_get_timestamp(location)
                             download_url = urljoin(download_url, location)
                             status_message = f"{status_message}\n" + \
@@ -230,6 +231,86 @@ def download(output, snapshot_entry, connection, status_message, no_redirect=Fal
                             break
             if response_status == 200:
                 output_file = sc.create_output(request_timestamp, request_url, output)
+                output_path = os.path.dirname(output_file)
+                os.makedirs(output_path, exist_ok=True)
+                with open(output_file, 'wb') as file:
+                    if response.getheader('Content-Encoding') == 'gzip':
+                        response_data = gzip.decompress(response_data)
+                        file.write(response_data)
+                    else:
+                        file.write(response_data)
+                if os.path.isfile(output_file):
+                    status_message = f"{status_message}\n" + \
+                        f"SUCCESS    -> HTTP: {response_status} - {response_status_message}\n" + \
+                        f"           -> URL: {download_url}\n" + \
+                        f"           -> FILE: {output_file}"
+                    sc.snapshot_entry_modify(snapshot_entry, "file", output_file)
+                v.write(status_message)
+                return True
+            else:
+                status_message = f"{status_message}\n" + \
+                    f"UNEXPECTED -> HTTP: {response_status} - {response_status_message}\n" + \
+                    f"           -> URL: {download_url}"
+                v.write(status_message)
+                return True
+        # exception returns false and appends the url to the failed list
+        except http.client.HTTPException as e:
+            status_message = f"{status_message}\n" + \
+                f"EXCEPTION -> ({i+1}/{max_retries}), append to failed_urls: {download_url}\n" + \
+                f"          -> {e}"
+            v.write(status_message)
+            return False
+        # connection refused waits and retries
+        except ConnectionRefusedError as e:
+            status_message = f"{status_message}\n" + \
+                f"REFUSED  -> ({i+1}/{max_retries}), reconnect in {sleep_time} seconds...\n" + \
+                f"         -> {e}"
+            v.write(status_message)
+            time.sleep(sleep_time)
+    v.write(f"FAILED  -> download, append to failed_urls: {download_url}")
+    return False
+
+def download2(output, snapshot_entry, connection, status_message, no_redirect=False):
+    """
+    Download a single URL and save it to the specified filepath.
+    If there is a redirect, the function will follow the redirect and update the download URL.
+    gzip decompression is used if the response is encoded.
+    According to the response status, the function will write a status message to the console and append a failed URL.
+    """
+    download_url = snapshot_entry["url_archive"]
+    max_retries = 2
+    sleep_time = 45
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'}
+    for i in range(max_retries):
+        try:
+            connection.request("GET", download_url, headers=headers)
+            response = connection.getresponse()
+            response_data = response.read()
+            response_status = response.status
+            response_status_message = parse_response_code(response_status)
+            sc.snapshot_entry_modify(snapshot_entry, "response", response_status)
+            if not no_redirect:
+                if response_status == 302:
+                    status_message = f"{status_message}\n" + \
+                        f"REDIRECT   -> HTTP: {response.status} - {response_status_message}\n" + \
+                        f"           -> FROM: {download_url}"
+                    while response_status == 302:
+                        connection.request("GET", download_url, headers=headers)
+                        response = connection.getresponse()
+                        response_data = response.read()
+                        response_status = response.status
+                        response_status_message = parse_response_code(response_status)
+                        location = response.getheader("Location")
+                        if location:
+                            download_url = urljoin(download_url, location)
+                            status_message = f"{status_message}\n" + \
+                                f"           ->   TO: {download_url}"
+                            sc.snapshot_entry_modify(snapshot_entry, "redirect_timestamp", url_get_timestamp(location))
+                            sc.snapshot_entry_modify(snapshot_entry, "redirect_url", download_url)
+                        else:
+                            break
+            if response_status == 200:
+                output_file = sc.create_output2(download_url, snapshot_entry["timestamp"], output)
                 output_path = os.path.dirname(output_file)
                 os.makedirs(output_path, exist_ok=True)
                 with open(output_file, 'wb') as file:
