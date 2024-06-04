@@ -245,7 +245,7 @@ def download(output, snapshot_entry, connection, status_message, no_redirect=Fal
 
                 else:
                     status_message = f"{status_message}\n" + \
-                        f"EXISTING  -> HTTP: {response_status} - {response_status_message}"
+                        f"EXISTING   -> HTTP: {response_status} - {response_status_message}"
                 status_message = f"{status_message}\n" + \
                     f"           -> URL: {download_url}\n" + \
                     f"           -> FILE: {output_file}"
